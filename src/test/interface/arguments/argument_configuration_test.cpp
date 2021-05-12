@@ -110,6 +110,9 @@ TEST_F(StanGmArgumentsConfiguration, TestMethod) {
       // kludge - generate_quantities method doesn't fit test paradigm
       if (argument.find("generate") != std::string::npos)
         continue;
+      // kludge - log_prob_grad method (probably) doesn't fit test paradigm
+      if (argument.find("log_prob_grad") != std::string::npos)
+        continue;
 
       remove_duplicates(argument);
 

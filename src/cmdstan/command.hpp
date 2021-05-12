@@ -46,6 +46,7 @@
 #include <stan/services/sample/hmc_static_unit_e.hpp>
 #include <stan/services/sample/hmc_static_unit_e_adapt.hpp>
 #include <stan/services/sample/standalone_gqs.hpp>
+#include <stan/services/sample/standalone_lpg.hpp>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -173,11 +174,11 @@ int command(int argc, const char *argv[]) {
   std::stringstream msg;
 
   // Cross-check arguments
-  if (parser.arg("method")->arg("generate_quantities")) {
+  argument *gq = parser.arg("method")->arg("generate_quantities");
+  argument *gq_or_lpg = gq ? gq : parser.arg("method")->arg("log_prob_grad");
+  if (gq_or_lpg) {
     std::string fitted_sample_fname
-        = dynamic_cast<string_argument *>(parser.arg("method")
-                                              ->arg("generate_quantities")
-                                              ->arg("fitted_params"))
+        = dynamic_cast<string_argument *>(gq_or_lpg->arg("fitted_params"))
               ->value();
     std::string output_fname
         = dynamic_cast<string_argument *>(parser.arg("output")->arg("file"))
@@ -258,12 +259,17 @@ int command(int argc, const char *argv[]) {
   // Invoke specified method
   int return_code = return_codes::OK;
 
-  if (parser.arg("method")->arg("generate_quantities")) {
+  if (gq_or_lpg) {
     string_argument *fitted_params_file = dynamic_cast<string_argument *>(
-        parser.arg("method")->arg("generate_quantities")->arg("fitted_params"));
+        gq_or_lpg->arg("fitted_params"));
     if (fitted_params_file->is_default()) {
-      msg << "Missing fitted_params argument, cannot run generate_quantities "
-             "without fitted sample.";
+      if (gq) {
+        msg << "Missing fitted_params argument, cannot run generate_quantities "
+        "without fitted sample.";
+      } else {
+        msg << "Missing fitted_params argument, cannot run log_prob_grad "
+        "without fitted sample.";
+      }
       throw std::invalid_argument(msg.str());
     }
     // read sample from cmdstan csv output file
@@ -308,10 +314,17 @@ int command(int argc, const char *argv[]) {
         throw std::invalid_argument(msg.str());
       }
     }
-    return_code = stan::services::standalone_generate(
-        model,
-        fitted_params.samples.block(0, hmc_fixed_cols, num_rows, num_cols),
-        random_seed, interrupt, logger, sample_writer);
+    if (gq) {
+      return_code = stan::services::standalone_generate(
+          model,
+          fitted_params.samples.block(0, hmc_fixed_cols, num_rows, num_cols),
+          random_seed, interrupt, logger, sample_writer);
+    } else {
+      return_code = stan::services::standalone_lpg(
+          model,
+          fitted_params.samples.block(0, hmc_fixed_cols, num_rows, num_cols),
+          interrupt, logger, sample_writer);
+    }
   } else if (parser.arg("method")->arg("diagnose")) {
     list_argument *test = dynamic_cast<list_argument *>(
         parser.arg("method")->arg("diagnose")->arg("test"));
